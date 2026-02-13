@@ -9,11 +9,40 @@
     
     <script src="coi-serviceworker.js"></script>
     <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+    
+    <style>
+        /* Estilos extra para la barra de progreso */
+        .progress-container {
+            width: 100%;
+            background-color: #e0f7fa;
+            border-radius: 15px;
+            margin: 20px 0;
+            height: 25px;
+            overflow: hidden;
+            display: none; /* Oculto por defecto */
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            border-radius: 15px;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+    </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>☁️ Extractor Cloud</h1>
+    <h1>☁️ Extractor Rápido</h1>
     
     <div class="tabs">
         <div class="tab active" onclick="switchTab(event, 'mp4-mp3')">Video a Audio</div>
@@ -31,88 +60,136 @@
             <div class="file-name-display" id="file-name-display"></div>
         </label>
 
+        <div class="progress-container" id="progress-container">
+            <div class="progress-bar" id="progress-bar">0%</div>
+        </div>
+
         <button class="btn" id="btn-mp4-mp3" onclick="convertMp4ToMp3()" disabled>
             Espera, elige un archivo primero...
         </button>
+        
+        <p id="turbo-warning" style="color: orange; font-size: 12px; display: none; margin-top: 10px;">
+            ⚠️ Modo lento activado: Asegúrate de que "coi-serviceworker.js" está en la carpeta.
+        </p>
     </div>
 
     <div id="yt" class="section">
         <p>Para YouTube, usa esta herramienta segura:</p>
-        <a href="https://turboscribe.ai/es/downloader/youtube/mp4" target="_blank" style="text-decoration: none;">
+        <a href="https://y2mate.com" target="_blank" style="text-decoration: none;">
             <button class="btn btn-yt">🚀 Ir a Descargador YT</button>
         </a>
     </div>
 
-    <div id="logs"></div>
-    <div id="output-link"></div>
+    <div id="logs" style="display:none;"></div> <div id="output-link"></div>
 </div>
 
 <script>
     const { createFFmpeg, fetchFile } = FFmpeg;
     let ffmpeg = null;
+    let isEngineReady = false;
 
-    // --- NUEVA FUNCIÓN VISUAL ---
-    // Detecta cuando el usuario elige un archivo y actualiza la caja bonita
+    // INICIALIZACIÓN AUTOMÁTICA
+    (async function initFFmpeg() {
+        // Verificar si tenemos soporte multihilo (SharedArrayBuffer)
+        if (typeof SharedArrayBuffer === 'undefined') {
+            document.getElementById('turbo-warning').style.display = 'block';
+            console.warn("SharedArrayBuffer no disponible. La conversión será lenta.");
+        }
+
+        try {
+            ffmpeg = createFFmpeg({ 
+                log: false, // Quitamos logs para mejorar rendimiento ligeramente
+                corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+            });
+            
+            await ffmpeg.load();
+            isEngineReady = true;
+            
+            // Activar botón si ya hay archivo
+            const fileInput = document.getElementById('uploader-mp4');
+            if (fileInput.files[0]) {
+                document.getElementById('btn-mp4-mp3').disabled = false;
+                document.getElementById('upload-text').innerText = "✅ Motor listo.";
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error cargando FFmpeg. Recarga la página.");
+        }
+    })();
+
     function updateFileName() {
         const input = document.getElementById('uploader-mp4');
         const fileNameDisplay = document.getElementById('file-name-display');
-        const uploadText = document.getElementById('upload-text');
         const dropZone = document.getElementById('drop-zone');
         const btn = document.getElementById('btn-mp4-mp3');
 
         if (input.files && input.files[0]) {
-            // Mostrar nombre del archivo
             fileNameDisplay.innerText = "Archivo: " + input.files[0].name;
-            uploadText.innerText = "✅ Video listo para procesar";
-            
-            // Cambiar estilo de la caja
             dropZone.classList.add('file-selected');
             
-            // Activar botón de convertir
-            btn.disabled = false;
-            btn.innerText = "🎵 Convertir a MP3";
+            if (isEngineReady) {
+                btn.disabled = false;
+                btn.innerText = "🎵 Convertir a MP3";
+            } else {
+                btn.innerText = "Cargando motor...";
+            }
         }
     }
 
-    // --- LÓGICA DE CONVERSIÓN (Igual que antes) ---
-
-    async function loadFFmpeg() {
-        if (ffmpeg) return;
-        log("☁️ Preparando la nube...");
-        ffmpeg = createFFmpeg({ log: true });
-        await ffmpeg.load();
-        log("✅ Sistema listo.");
-    }
-
     async function convertMp4ToMp3() {
+        if (!isEngineReady) return alert("Espera a que cargue el sistema.");
+
         const fileInput = document.getElementById('uploader-mp4');
         const btn = document.getElementById('btn-mp4-mp3');
+        const progressBar = document.getElementById('progress-bar');
+        const progressContainer = document.getElementById('progress-container');
 
         if (!fileInput.files[0]) return;
 
+        // UI Updates
         btn.disabled = true;
         btn.innerText = "⏳ Procesando...";
-        
-        // Animación suave de los logs
-        document.getElementById('logs').style.display = 'block';
-
-        await loadFFmpeg();
+        progressContainer.style.display = 'block';
+        document.getElementById('output-link').innerHTML = ''; // Limpiar descargas anteriores
 
         const file = fileInput.files[0];
         const fileName = 'input.mp4';
 
-        log("📂 Leyendo video...");
+        // 1. Escribir archivo
         ffmpeg.FS('writeFile', fileName, await fetchFile(file));
 
-        log("🎵 Extrayendo audio...");
-        await ffmpeg.run('-i', fileName, '-vn', '-acodec', 'libmp3lame', 'output.mp3');
+        // 2. Configurar barra de progreso
+        ffmpeg.setProgress(({ ratio }) => {
+            const percent = (ratio * 100).toFixed(0);
+            if(percent >= 0 && percent <= 100){
+                progressBar.style.width = percent + "%";
+                progressBar.innerText = percent + "%";
+            }
+        });
 
-        log("✨ ¡Completado!");
-        const data = ffmpeg.FS('readFile', 'output.mp3');
+        // 3. COMANDO OPTIMIZADO PARA VELOCIDAD
+        // -b:a 128k: Bitrate constante (más rápido que variable)
+        // -ar 44100: Frecuencia estándar
+        // -ac 2: Estéreo
+        // -preset ultrafast: Intenta priorizar velocidad
+        await ffmpeg.run(
+            '-i', fileName, 
+            '-vn', 
+            '-acodec', 'libmp3lame', 
+            '-b:a', '128k', 
+            '-ar', '44100', 
+            'output.mp3'
+        );
+
+        // 4. Finalización
+        progressBar.style.width = "100%";
+        progressBar.innerText = "¡Listo!";
         
+        const data = ffmpeg.FS('readFile', 'output.mp3');
         createDownloadLink(data, 'audio_extraido.mp3', 'audio/mpeg');
         
-        btn.innerText = "✅ ¡Hecho!";
+        btn.innerText = "✅ Conversión Terminada";
+        // btn.disabled = false; // Opcional: dejar bloqueado para obligar a recargar
     }
 
     function createDownloadLink(data, filename, type) {
@@ -121,17 +198,11 @@
         const div = document.getElementById('output-link');
         
         div.innerHTML = `
-            <a href="${url}" download="${filename}" style="text-decoration:none; display:block; margin-top:20px; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
-                <button class="btn" style="background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%); color: #1a5c38; box-shadow: 0 5px 15px rgba(67, 233, 123, 0.5);">
+            <a href="${url}" download="${filename}" style="text-decoration:none; display:block; margin-top:20px;">
+                <button class="btn" style="background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%); color: #1a5c38;">
                     ⬇️ Descargar MP3
                 </button>
             </a>`;
-    }
-
-    function log(message) {
-        const logs = document.getElementById('logs');
-        logs.innerHTML += `> ${message}<br>`;
-        logs.scrollTop = logs.scrollHeight;
     }
 
     function switchTab(evt, tabId) {
@@ -139,9 +210,6 @@
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
         document.getElementById(tabId).classList.add('active');
         evt.currentTarget.classList.add('active');
-        document.getElementById('logs').style.display = 'none';
-        document.getElementById('logs').innerHTML = '';
-        document.getElementById('output-link').innerHTML = '';
     }
 </script>
 
