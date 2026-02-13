@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extractor de Audio ☁️</title>
+    
+    <link rel="stylesheet" href="style.css">
+    
+    <script src="coi-serviceworker.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <h1>☁️ Extractor Cloud</h1>
+    
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab(event, 'mp4-mp3')">Video a Audio</div>
+        <div class="tab" onclick="switchTab(event, 'yt')">YouTube</div>
+    </div>
+
+    <div id="mp4-mp3" class="section active">
+        <p>Sube tu video para obtener el MP3.</p>
+
+        <input type="file" id="uploader-mp4" accept="video/mp4" onchange="updateFileName()">
+        
+        <label for="uploader-mp4" class="upload-box" id="drop-zone">
+            <span class="upload-icon">☁️</span>
+            <span class="upload-text" id="upload-text">Haz clic para elegir un video</span>
+            <div class="file-name-display" id="file-name-display"></div>
+        </label>
+
+        <button class="btn" id="btn-mp4-mp3" onclick="convertMp4ToMp3()" disabled>
+            Espera, elige un archivo primero...
+        </button>
+    </div>
+
+    <div id="yt" class="section">
+        <p>Para YouTube, usa esta herramienta segura:</p>
+        <a href="https://y2mate.com" target="_blank" style="text-decoration: none;">
+            <button class="btn btn-yt">🚀 Ir a Descargador YT</button>
+        </a>
+    </div>
+
+    <div id="logs"></div>
+    <div id="output-link"></div>
+</div>
+
+<script>
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    let ffmpeg = null;
+
+    // --- NUEVA FUNCIÓN VISUAL ---
+    // Detecta cuando el usuario elige un archivo y actualiza la caja bonita
+    function updateFileName() {
+        const input = document.getElementById('uploader-mp4');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const uploadText = document.getElementById('upload-text');
+        const dropZone = document.getElementById('drop-zone');
+        const btn = document.getElementById('btn-mp4-mp3');
+
+        if (input.files && input.files[0]) {
+            // Mostrar nombre del archivo
+            fileNameDisplay.innerText = "Archivo: " + input.files[0].name;
+            uploadText.innerText = "✅ Video listo para procesar";
+            
+            // Cambiar estilo de la caja
+            dropZone.classList.add('file-selected');
+            
+            // Activar botón de convertir
+            btn.disabled = false;
+            btn.innerText = "🎵 Convertir a MP3";
+        }
+    }
+
+    // --- LÓGICA DE CONVERSIÓN (Igual que antes) ---
+
+    async function loadFFmpeg() {
+        if (ffmpeg) return;
+        log("☁️ Preparando la nube...");
+        ffmpeg = createFFmpeg({ log: true });
+        await ffmpeg.load();
+        log("✅ Sistema listo.");
+    }
+
+    async function convertMp4ToMp3() {
+        const fileInput = document.getElementById('uploader-mp4');
+        const btn = document.getElementById('btn-mp4-mp3');
+
+        if (!fileInput.files[0]) return;
+
+        btn.disabled = true;
+        btn.innerText = "⏳ Procesando...";
+        
+        // Animación suave de los logs
+        document.getElementById('logs').style.display = 'block';
+
+        await loadFFmpeg();
+
+        const file = fileInput.files[0];
+        const fileName = 'input.mp4';
+
+        log("📂 Leyendo video...");
+        ffmpeg.FS('writeFile', fileName, await fetchFile(file));
+
+        log("🎵 Extrayendo audio...");
+        await ffmpeg.run('-i', fileName, '-vn', '-acodec', 'libmp3lame', 'output.mp3');
+
+        log("✨ ¡Completado!");
+        const data = ffmpeg.FS('readFile', 'output.mp3');
+        
+        createDownloadLink(data, 'audio_extraido.mp3', 'audio/mpeg');
+        
+        btn.innerText = "✅ ¡Hecho!";
+    }
+
+    function createDownloadLink(data, filename, type) {
+        const blob = new Blob([data.buffer], { type: type });
+        const url = URL.createObjectURL(blob);
+        const div = document.getElementById('output-link');
+        
+        div.innerHTML = `
+            <a href="${url}" download="${filename}" style="text-decoration:none; display:block; margin-top:20px; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);">
+                <button class="btn" style="background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%); color: #1a5c38; box-shadow: 0 5px 15px rgba(67, 233, 123, 0.5);">
+                    ⬇️ Descargar MP3
+                </button>
+            </a>`;
+    }
+
+    function log(message) {
+        const logs = document.getElementById('logs');
+        logs.innerHTML += `> ${message}<br>`;
+        logs.scrollTop = logs.scrollHeight;
+    }
+
+    function switchTab(evt, tabId) {
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        evt.currentTarget.classList.add('active');
+        document.getElementById('logs').style.display = 'none';
+        document.getElementById('logs').innerHTML = '';
+        document.getElementById('output-link').innerHTML = '';
+    }
+</script>
+
+</body>
+</html>
